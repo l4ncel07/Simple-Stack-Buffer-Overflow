@@ -53,7 +53,7 @@ def options_selection():
 def main_menu_selection():
     selection=input("\nEnter your selection(1-9): ").strip()
     if selection == "1":
-        spike_menu()
+        spike()
     elif selection == "2":
         fuzz()
     elif selection == "3":
@@ -75,6 +75,9 @@ def main_menu_selection():
     else:
         print("Invalid selection.")
         main_menu_selection()
+        
+def spike():
+    end_of_process_selection("spike","Work in Progress...")
     
 def fuzz():
     global crashbytes
@@ -391,6 +394,8 @@ def end_of_process_selection(i,x=""):
             print(f"{x}\n")
         selection = input("Press R to restart \nPress M to return to main menu\nPress X to exit\n")
         if selection.strip().lower() == "r":
+            if i == "spike":
+                spike()
             if i == "fuzz":
                 fuzz()
             if i == "offset":
